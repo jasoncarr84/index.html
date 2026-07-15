@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Ask — find the best one</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#FF5A46">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -16,6 +20,10 @@
     --navy:#1F2A44;
     --amber:#C8763A;
     --amber-soft:#FBEEE3;
+    --pop:#FF5A46;
+    --pop-deep:#E8412D;
+    --pop-soft:#FFE4DE;
+    --grad:linear-gradient(135deg, #FF5A46 0%, #FF8A3D 100%);
     --radius:20px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -79,11 +87,24 @@
     max-height:90px;
   }
   .search-shell textarea::placeholder{ color:#A9ACB1; }
-  .go-btn{
-    width:42px; height:42px; border-radius:13px; border:none; background:var(--ink);
-    color:white; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer;
-    flex-shrink:0;
+  .brand-row{ display:flex; align-items:center; gap:9px; }
+  @keyframes wiggle{
+    0%, 100%{ transform:rotate(0deg); }
+    25%{ transform:rotate(-8deg); }
+    75%{ transform:rotate(8deg); }
   }
+  .logo-mark{
+    width:30px; height:30px; border-radius:9px; background:var(--grad);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 8px rgba(232,65,45,.28);
+    animation:wiggle 4s ease-in-out infinite;
+  }
+  .go-btn{
+    width:42px; height:42px; border-radius:13px; border:none; background:var(--grad);
+    color:white; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+    flex-shrink:0; box-shadow:0 3px 10px rgba(232,65,45,.3); transition:transform .15s ease;
+  }
+  .go-btn:active{ transform:scale(0.88); }
   .go-btn:disabled{ background:#D8D7D2; }
 
   .examples{ padding:18px 22px 0; display:flex; flex-direction:column; gap:8px; }
@@ -111,14 +132,21 @@
   }
   .query-recap b{ color:var(--ink); font-weight:600; }
 
+  @keyframes popIn{
+    0%{ transform:scale(0.94); opacity:0; }
+    70%{ transform:scale(1.01); opacity:1; }
+    100%{ transform:scale(1); }
+  }
   .pick-card{
     margin:0 22px; background:var(--panel); border:1.5px solid var(--ink); border-radius:22px;
-    padding:22px; position:relative;
+    padding:22px; position:relative; box-shadow:0 10px 30px rgba(232,65,45,.08);
+    animation:popIn .4s ease;
   }
   .pick-badge{
-    display:inline-flex; align-items:center; gap:6px; background:var(--amber-soft); color:var(--amber);
+    display:inline-flex; align-items:center; gap:6px; background:var(--pop-soft); color:var(--pop-deep);
     font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
     padding:5px 11px; border-radius:999px; margin-bottom:14px;
+    transform:rotate(-3deg); box-shadow:0 3px 8px rgba(232,65,45,.15);
   }
   .pick-rating{ font-size:13px; color:var(--ink-soft); margin-top:6px; }
   .pick-rating b{ color:var(--ink); font-weight:700; }
@@ -157,12 +185,13 @@
     margin-top:14px; padding-top:14px; border-top:1px solid var(--line);
     font-size:13.5px; color:var(--ink); line-height:1.5;
   }
-  .pick-reason .lbl{ color:var(--amber); font-weight:700; }
+  .pick-reason .lbl{ color:var(--pop-deep); font-weight:700; }
   .buy-btn{
     display:block; width:100%; margin-top:18px; padding:15px; border:none; border-radius:14px;
-    background:var(--ink); color:white; font-family:'Inter'; font-size:15px; font-weight:700; cursor:pointer;
-    text-align:center;
+    background:var(--grad); color:white; font-family:'Inter'; font-size:15px; font-weight:700; cursor:pointer;
+    text-align:center; box-shadow:0 4px 14px rgba(232,65,45,.25); transition:transform .15s ease;
   }
+  .buy-btn:active{ transform:scale(0.97); }
   .buy-btn .arrow{ margin-left:6px; }
   .buy-note{ text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:9px; }
 
@@ -178,6 +207,7 @@
   .compare-list.open{ display:block; }
   .comp-row{
     display:flex; gap:12px; align-items:center; padding:14px 0; border-bottom:1px solid var(--line);
+    cursor:pointer;
   }
   .comp-row:last-child{ border-bottom:none; }
   .comp-thumb{
@@ -215,7 +245,12 @@
 <div id="app">
 
   <header>
-    <div class="brand">Ask</div>
+    <div class="brand-row">
+      <div class="logo-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="white" stroke-width="2.4"/><path d="M20 20l-4-4" stroke="white" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </div>
+      <div class="brand">Ask</div>
+    </div>
     <div class="icon-btn" onclick="goTo('history')">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4v8l-8 4-8-4V8z" stroke="#14151A" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </div>
@@ -228,7 +263,7 @@
       <p>Search Amazon without the fake reviews and knockoffs.<br>One trustworthy pick, no browsing required.</p>
     </div>
     <div class="search-shell">
-      <textarea id="search-box" rows="1" placeholder="record player" oninput="autoGrow(this); toggleGo();"></textarea>
+      <textarea id="search-box" rows="1" placeholder="Let's find something" oninput="autoGrow(this); toggleGo();"></textarea>
       <button class="go-btn" id="go-btn" disabled onclick="runSearch()">→</button>
     </div>
     <div class="examples">
@@ -267,14 +302,14 @@
       <div class="pick-rating" id="pick-rating"></div>
       <div class="quality-flag" id="quality-flag" style="display:none;"></div>
       <div class="pick-reason"><span class="lbl">Why this one — </span><span id="pick-reason-text"></span></div>
-      <div class="video-row" id="video-row" onclick="showToast('Would open the review video on YouTube')">
+      <div class="video-row" id="video-row" onclick="openLink(currentResult && currentResult.video && currentResult.video.url)">
         <div class="video-thumb">▶</div>
         <div>
           <div class="video-title" id="video-title">Watch a quick review</div>
           <div class="video-sub" id="video-sub">YouTube · 4:12</div>
         </div>
       </div>
-      <button class="buy-btn" onclick="showToast(&quot;Would open this listing on Amazon&quot;)">View on Amazon <span class="arrow">→</span></button>
+      <button class="buy-btn" onclick="openLink(currentResult && currentResult.url)">View on Amazon <span class="arrow">→</span></button>
       <div class="buy-note">Opens the real Amazon listing to complete your purchase. If you buy, Amazon pays us a small commission — you never pay more.</div>
     </div>
 
@@ -284,7 +319,7 @@
     </div>
     <div class="compare-list" id="compare-list"></div>
 
-    <button class="new-search-btn" onclick="goTo('home'); resetSearch();">Ask something else</button>
+    <button class="new-search-btn" onclick="goTo('home'); resetSearch();">Find something else</button>
   </div>
 
   <!-- HISTORY -->
@@ -410,7 +445,7 @@ function runSearch(){
   const query = document.getElementById('search-box').value.trim();
   if(!query) return;
   goTo('loading');
-  const lines = ['Searching Amazon…', 'Checking current prices…', 'Comparing reviews…'];
+  const lines = ['Snooping around Amazon 👀', 'Sniffing out the best price 💰', "Reading the reviews so you don't have to 📖"];
   let i = 0;
   document.getElementById('loading-line').textContent = lines[0];
   const interval = setInterval(()=>{
@@ -442,13 +477,15 @@ function runSearch(){
               meta: '',
               price: top.price,
               store: 'Amazon',
+              url: top.url,
+              image: top.image,
               rating: top.rating || '—',
               reviewCount: top.reviewCount || '',
               qualityFlag: null,
               reason: 'the best match we found for this search just now.',
-              video: videoData.video ? { title: videoData.video.title, length: '' } : null,
+              video: videoData.video ? { title: videoData.video.title, length: '', url: videoData.video.url } : null,
               others: data.results.slice(1).map(o => ({
-                emoji:'📦', name:o.name, store:'Amazon', price:o.price,
+                emoji:'📦', name:o.name, store:'Amazon', price:o.price, url:o.url, image:o.image,
                 rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
               })),
             });
@@ -459,13 +496,15 @@ function runSearch(){
             meta: '',
             price: top.price,
             store: 'Amazon',
+            url: top.url,
+            image: top.image,
             rating: top.rating || '—',
             reviewCount: top.reviewCount || '',
             qualityFlag: null,
             reason: 'the best match we found for this search just now.',
             video: null,
             others: data.results.slice(1).map(o => ({
-              emoji:'📦', name:o.name, store:'Amazon', price:o.price,
+              emoji:'📦', name:o.name, store:'Amazon', price:o.price, url:o.url, image:o.image,
               rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
             })),
           }));
@@ -481,7 +520,12 @@ function runSearch(){
 
 function renderResults(query, r){
   document.getElementById('recap-text').textContent = '"' + query + '"';
-  document.getElementById('pick-photo').textContent = '[ product photo ]';
+  const photoEl = document.getElementById('pick-photo');
+  if(r.image){
+    photoEl.innerHTML = `<img src="${r.image}" alt="${r.name}" style="width:100%;height:100%;object-fit:contain;border-radius:16px;">`;
+  } else {
+    photoEl.innerHTML = '[ product photo ]';
+  }
   document.getElementById('pick-emoji').textContent = r.emoji;
   document.getElementById('pick-name').textContent = r.name;
   document.getElementById('pick-meta').textContent = r.meta;
@@ -509,8 +553,8 @@ function renderResults(query, r){
 
   const list = document.getElementById('compare-list');
   list.innerHTML = r.others.map(o => `
-    <div class="comp-row">
-      <div class="comp-thumb">${o.emoji}</div>
+    <div class="comp-row" onclick="openLink('${(o.url||'').replace(/'/g, "\\'")}')">
+      <div class="comp-thumb">${o.image ? `<img src="${o.image}" alt="${o.name}" style="width:100%;height:100%;object-fit:contain;border-radius:11px;">` : o.emoji}</div>
       <div class="comp-info">
         <div class="comp-name">${o.name}</div>
         <div class="comp-store">${o.store}</div>
@@ -564,6 +608,22 @@ function goTo(screen){
   document.getElementById('screen-'+screen).classList.add('active');
   if(screen==='history') renderHistory();
   window.scrollTo(0,0);
+}
+
+const AMAZON_ASSOCIATE_TAG = 'jc8402-20'; // replace with your own tag if this ever changes
+
+function addAffiliateTag(url){
+  if(!url.includes('amazon.com')) return url; // only tag real Amazon product links
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}tag=${AMAZON_ASSOCIATE_TAG}`;
+}
+
+function openLink(url){
+  if(!url){
+    showToast('No real link available for this demo item');
+    return;
+  }
+  window.open(addAffiliateTag(url), '_blank');
 }
 
 function showToast(msg){
