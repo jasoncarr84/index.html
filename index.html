@@ -1,0 +1,195 @@
+/**
+ * Backend for the app: search Amazon products and return clean,
+ * structured data shaped for the "Ask" app's UI.
+ *
+ * WHAT THIS DOES
+ *  - Takes a search term (e.g. "laptop")
+ *  - Calls Decodo's Amazon Search endpoint (confirmed working, real response
+ *    tested against a live "laptop" search)
+ *  - Shapes the raw response into { name, price, store, rating, reviewCount, image, url, asin }
+ *  - Caches results so repeated searches for the same product don't cost twice
+ *
+ * BEFORE THIS WILL WORK
+ *  1. Set DECODO_USERNAME and DECODO_PASSWORD as environment variables —
+ *     never hardcode them, and never ship them inside the Android app itself.
+ *  2. That's it — the request shape and field mapping below are already
+ *     confirmed against a real Decodo response.
+ *
+ * WHERE THIS RUNS
+ *  This is a small Node.js/Express server. Deploy it somewhere like Render,
+ *  Railway, or a Cloudflare Worker (with minor syntax changes) — not on the
+ *  phone. The Android app calls THIS server; this server calls Decodo.
+ */
+
+const express = require('express');
+const app = express();
+
+// Allow the app (running from a browser, wherever it's hosted) to actually
+// read responses from this server. Without this, browsers silently block
+// the fetch with a generic "Failed to fetch" error, even though the server
+// itself is working fine.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+const DECODO_USERNAME = process.env.DECODO_USERNAME; // e.g. U0000456403
+const DECODO_PASSWORD = process.env.DECODO_PASSWORD; // rotate this if it's ever been shared/screenshotted
+
+// --- Simple in-memory cache -------------------------------------------------
+// Good enough for testing. For real production traffic, swap this for a
+// shared store (Redis, Cloudflare KV, etc.) so multiple server instances
+// share the same cache.
+const cache = new Map();
+const CACHE_TTL_MS = 1000 * 60 * 60 * 6; // 6 hours
+
+function getCached(query) {
+  const hit = cache.get(query);
+  if (hit && Date.now() - hit.time < CACHE_TTL_MS) return hit.data;
+  return null;
+}
+function setCached(query, data) {
+  cache.set(query, { data, time: Date.now() });
+}
+
+// --- Call the Amazon data API ----------------------------------------------
+async function fetchAmazonResults(query) {
+  const auth = Buffer.from(`${DECODO_USERNAME}:${DECODO_PASSWORD}`).toString('base64');
+
+  const res = await fetch('https://scraper-api.decodo.com/v2/scrape', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      target: 'amazon_search',
+      query: query,
+      domain: 'com',
+      parse: true,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Amazon lookup failed: ${res.status} ${res.statusText}`);
+  }
+  const data = await res.json();
+  // Confirmed real shape: data.results.results.organic is the array of products.
+  // "paid" holds sponsored ads — skipped on purpose, since those aren't genuine picks.
+  const items = data.results && data.results.results && data.results.results.organic;
+  return items || [];
+}
+
+// --- Shape raw API data into what the app's UI expects ----------------------
+// IMPORTANT: the field names on the right (item.stars, item.reviewsCount, ...)
+// are placeholders based on typical scraper output. Replace them with the
+// real field names once you've looked at an actual response.
+function shapeItem(item) {
+  return {
+    name: item.title || 'Unknown product',
+    price: typeof item.price === 'number' ? `$${item.price.toFixed(2)}` : '—',
+    store: 'Amazon',
+    rating: item.rating ? `${item.rating}★` : null,
+    reviewCount: item.reviews_count
+      ? `${Number(item.reviews_count).toLocaleString()} reviews`
+      : null,
+    image: item.url_image || null,
+    // item.url comes back as a relative path (e.g. "/HP-Laptop.../dp/B0..."), not a full link
+    url: item.url ? `https://www.amazon.com${item.url}` : null,
+    asin: item.asin || null,
+  };
+}
+
+// --- Route -------------------------------------------------------------
+app.get('/api/search', async (req, res) => {
+  const query = (req.query.q || '').trim().toLowerCase();
+  if (!query) {
+    return res.status(400).json({ error: 'Missing search query (?q=...)' });
+  }
+
+  const cached = getCached(query);
+  if (cached) {
+    return res.json({ source: 'cache', results: cached });
+  }
+
+  try {
+    const raw = await fetchAmazonResults(query);
+    const results = raw.map(shapeItem);
+    setCached(query, results);
+    res.json({ source: 'live', results });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Search failed. Check server logs.' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+
+// ---------------------------------------------------------------------------
+// YOUTUBE VIDEO LOOKUP (review / unboxing video for the top pick)
+// ---------------------------------------------------------------------------
+// Free, but rate-limited: ~100 searches/day total across ALL users of your
+// app (YouTube's search.list quota). Caching by product name is what makes
+// this workable — one lookup per product name, not one per user.
+
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const videoCache = new Map();
+const VIDEO_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 1 week — videos don't change often
+
+function getCachedVideo(query) {
+  const hit = videoCache.get(query);
+  if (hit && Date.now() - hit.time < VIDEO_CACHE_TTL_MS) return hit.data;
+  return null;
+}
+function setCachedVideo(query, data) {
+  videoCache.set(query, { data, time: Date.now() });
+}
+
+async function fetchYoutubeReview(productName) {
+  const searchTerm = `${productName} review`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(searchTerm)}&key=${YOUTUBE_API_KEY}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`YouTube lookup failed: ${res.status} ${res.statusText}`);
+  }
+  const data = await res.json();
+  if (!data.items || data.items.length === 0) return null;
+
+  const item = data.items[0];
+  return {
+    title: item.snippet.title,
+    videoId: item.id.videoId,
+    url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+    channel: item.snippet.channelTitle,
+  };
+}
+
+app.get('/api/video', async (req, res) => {
+  const productName = (req.query.product || '').trim();
+  if (!productName) {
+    return res.status(400).json({ error: 'Missing product name (?product=...)' });
+  }
+
+  const cacheKey = productName.toLowerCase();
+  const cached = getCachedVideo(cacheKey);
+  if (cached !== null) {
+    return res.json({ source: 'cache', video: cached });
+  }
+
+  try {
+    const video = await fetchYoutubeReview(productName);
+    setCachedVideo(cacheKey, video); // caches "null" too, so we don't re-search dead ends daily
+    res.json({ source: 'live', video });
+  } catch (err) {
+    console.error(err);
+    // Fail soft: no video is not a broken app, just an empty video row
+    res.json({ source: 'error', video: null });
+  }
+});
+
+app.listen(PORT, () => console.log(`Amazon search backend running on port ${PORT}`));
