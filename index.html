@@ -229,6 +229,10 @@
 
   /* ---- HISTORY drawer ---- */
   #screen-history{ padding-top:4px; }
+  .hist-back{
+    display:flex; align-items:center; gap:6px; padding:14px 22px 6px; cursor:pointer;
+    font-size:14px; font-weight:600; color:var(--ink);
+  }
   .hist-empty{ text-align:center; padding:80px 30px; color:var(--ink-soft); }
   .hist-empty .big{ font-size:36px; margin-bottom:12px; }
   .hist-item{
@@ -324,6 +328,10 @@
 
   <!-- HISTORY -->
   <div class="screen" id="screen-history">
+    <div class="hist-back" onclick="goTo('home')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#14151A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Back</span>
+    </div>
     <div id="history-list"></div>
     <div class="hist-empty" id="history-empty">
       <div class="big">◈</div>
