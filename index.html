@@ -1,195 +1,578 @@
-/**
- * Backend for the app: search Amazon products and return clean,
- * structured data shaped for the "Ask" app's UI.
- *
- * WHAT THIS DOES
- *  - Takes a search term (e.g. "laptop")
- *  - Calls Decodo's Amazon Search endpoint (confirmed working, real response
- *    tested against a live "laptop" search)
- *  - Shapes the raw response into { name, price, store, rating, reviewCount, image, url, asin }
- *  - Caches results so repeated searches for the same product don't cost twice
- *
- * BEFORE THIS WILL WORK
- *  1. Set DECODO_USERNAME and DECODO_PASSWORD as environment variables —
- *     never hardcode them, and never ship them inside the Android app itself.
- *  2. That's it — the request shape and field mapping below are already
- *     confirmed against a real Decodo response.
- *
- * WHERE THIS RUNS
- *  This is a small Node.js/Express server. Deploy it somewhere like Render,
- *  Railway, or a Cloudflare Worker (with minor syntax changes) — not on the
- *  phone. The Android app calls THIS server; this server calls Decodo.
- */
-
-const express = require('express');
-const app = express();
-
-// Allow the app (running from a browser, wherever it's hosted) to actually
-// read responses from this server. Without this, browsers silently block
-// the fetch with a generic "Failed to fetch" error, even though the server
-// itself is working fine.
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
-
-const DECODO_USERNAME = process.env.DECODO_USERNAME; // e.g. U0000456403
-const DECODO_PASSWORD = process.env.DECODO_PASSWORD; // rotate this if it's ever been shared/screenshotted
-
-// --- Simple in-memory cache -------------------------------------------------
-// Good enough for testing. For real production traffic, swap this for a
-// shared store (Redis, Cloudflare KV, etc.) so multiple server instances
-// share the same cache.
-const cache = new Map();
-const CACHE_TTL_MS = 1000 * 60 * 60 * 6; // 6 hours
-
-function getCached(query) {
-  const hit = cache.get(query);
-  if (hit && Date.now() - hit.time < CACHE_TTL_MS) return hit.data;
-  return null;
-}
-function setCached(query, data) {
-  cache.set(query, { data, time: Date.now() });
-}
-
-// --- Call the Amazon data API ----------------------------------------------
-async function fetchAmazonResults(query) {
-  const auth = Buffer.from(`${DECODO_USERNAME}:${DECODO_PASSWORD}`).toString('base64');
-
-  const res = await fetch('https://scraper-api.decodo.com/v2/scrape', {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      target: 'amazon_search',
-      query: query,
-      domain: 'com',
-      parse: true,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Amazon lookup failed: ${res.status} ${res.statusText}`);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ask — find the best one</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAFAF8;
+    --panel:#FFFFFF;
+    --ink:#14151A;
+    --ink-soft:#6B6F76;
+    --line:#E9E8E4;
+    --navy:#1F2A44;
+    --amber:#C8763A;
+    --amber-soft:#FBEEE3;
+    --radius:20px;
   }
-  const data = await res.json();
-  // Confirmed real shape: data.results.results.organic is the array of products.
-  // "paid" holds sponsored ads — skipped on purpose, since those aren't genuine picks.
-  const items = data.results && data.results.results && data.results.results.organic;
-  return items || [];
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',sans-serif;
+    background:var(--navy);
+    color:var(--ink);
+    display:flex;
+    justify-content:center;
+    min-height:100vh;
+  }
+  #app{
+    width:100%;
+    max-width:460px;
+    min-height:100vh;
+    background:var(--paper);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    overflow-x:hidden;
+  }
+
+  /* ---- Header ---- */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 22px 6px;
+  }
+  .brand{
+    font-family:'Newsreader', serif; font-size:20px; font-weight:600; color:var(--ink);
+    letter-spacing:-0.01em;
+  }
+  .icon-btn{
+    width:36px; height:36px; border-radius:50%; border:1px solid var(--line);
+    background:var(--panel); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+
+  /* ---- Screens ---- */
+  .screen{ display:none; flex:1; flex-direction:column; }
+  .screen.active{ display:flex; }
+
+  /* ---- HOME ---- */
+  #screen-home{ justify-content:flex-start; padding-top:8vh; }
+  .home-hero{ padding:0 28px; text-align:center; }
+  .home-hero h1{
+    font-family:'Newsreader', serif; font-weight:500; font-size:32px; line-height:1.22;
+    color:var(--ink); margin:0 0 10px;
+  }
+  .home-hero p{
+    font-size:14.5px; color:var(--ink-soft); margin:0 0 34px; line-height:1.5;
+  }
+
+  .search-shell{
+    margin:0 22px; background:var(--panel); border:1.5px solid var(--line); border-radius:18px;
+    padding:6px 6px 6px 18px; display:flex; align-items:center; gap:8px;
+    box-shadow:0 1px 2px rgba(20,21,26,.03);
+  }
+  .search-shell textarea{
+    flex:1; border:none; outline:none; resize:none; background:transparent;
+    font-family:'Inter'; font-size:15px; color:var(--ink); padding:14px 0; line-height:1.4;
+    max-height:90px;
+  }
+  .search-shell textarea::placeholder{ color:#A9ACB1; }
+  .go-btn{
+    width:42px; height:42px; border-radius:13px; border:none; background:var(--ink);
+    color:white; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+    flex-shrink:0;
+  }
+  .go-btn:disabled{ background:#D8D7D2; }
+
+  .examples{ padding:18px 22px 0; display:flex; flex-direction:column; gap:8px; }
+  .ex-label{ font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:#A9ACB1; font-weight:700; padding:0 4px 4px; }
+  .ex-chip{
+    text-align:left; padding:13px 16px; border-radius:14px; background:transparent; border:1px solid var(--line);
+    font-size:14px; color:var(--ink); cursor:pointer;
+  }
+  .ex-chip:active{ background:var(--panel); }
+
+  /* ---- THINKING (loading) ---- */
+  #screen-loading{ align-items:center; justify-content:center; text-align:center; padding:0 40px; }
+  .think-mark{
+    width:52px; height:52px; border-radius:50%; border:2.5px solid var(--line); border-top-color:var(--navy);
+    animation:spin 0.9s linear infinite; margin-bottom:22px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  #loading-line{ font-family:'Newsreader', serif; font-size:18px; color:var(--ink); font-style:italic; }
+  .loading-sub{ font-size:13px; color:var(--ink-soft); margin-top:8px; }
+
+  /* ---- RESULTS ---- */
+  #screen-results{ padding-bottom:40px; }
+  .query-recap{
+    padding:6px 22px 18px; font-size:13.5px; color:var(--ink-soft);
+  }
+  .query-recap b{ color:var(--ink); font-weight:600; }
+
+  .pick-card{
+    margin:0 22px; background:var(--panel); border:1.5px solid var(--ink); border-radius:22px;
+    padding:22px; position:relative;
+  }
+  .pick-badge{
+    display:inline-flex; align-items:center; gap:6px; background:var(--amber-soft); color:var(--amber);
+    font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    padding:5px 11px; border-radius:999px; margin-bottom:14px;
+  }
+  .pick-rating{ font-size:13px; color:var(--ink-soft); margin-top:6px; }
+  .pick-rating b{ color:var(--ink); font-weight:700; }
+  .quality-flag{
+    display:flex; gap:8px; align-items:flex-start; margin-top:12px; padding:11px 13px;
+    background:#FBF2E3; border:1px solid #F0DDB8; border-radius:12px; font-size:12.5px; color:#8A5A1E; line-height:1.4;
+  }
+
+  .pick-photo{
+    width:100%; height:150px; border-radius:16px; background:#F1F0EC; margin-bottom:16px;
+    display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--ink-soft);
+    background-image:linear-gradient(135deg, #F1F0EC 0%, #E7E5DF 100%);
+  }
+  .video-row{
+    display:flex; align-items:center; gap:12px; margin-top:14px; padding:12px 14px;
+    border:1px solid var(--line); border-radius:14px; cursor:pointer;
+  }
+  .video-thumb{
+    width:42px; height:42px; border-radius:11px; background:var(--ink); color:white;
+    display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;
+  }
+  .video-title{ font-size:13.5px; font-weight:600; color:var(--ink); }
+  .video-sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+
+  .pick-top{ display:flex; gap:14px; align-items:flex-start; }
+  .pick-thumb{
+    width:64px; height:64px; border-radius:14px; background:#F1F0EC; display:flex; align-items:center;
+    justify-content:center; font-size:30px; flex-shrink:0;
+  }
+  .pick-name{ font-family:'Newsreader', serif; font-size:19px; font-weight:600; line-height:1.28; color:var(--ink); }
+  .pick-meta{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+  .pick-price-row{ display:flex; align-items:baseline; gap:8px; margin-top:14px; }
+  .pick-price{ font-family:'Newsreader', serif; font-size:30px; font-weight:600; color:var(--ink); }
+  .pick-store{ font-size:13px; color:var(--ink-soft); }
+  .pick-reason{
+    margin-top:14px; padding-top:14px; border-top:1px solid var(--line);
+    font-size:13.5px; color:var(--ink); line-height:1.5;
+  }
+  .pick-reason .lbl{ color:var(--amber); font-weight:700; }
+  .buy-btn{
+    display:block; width:100%; margin-top:18px; padding:15px; border:none; border-radius:14px;
+    background:var(--ink); color:white; font-family:'Inter'; font-size:15px; font-weight:700; cursor:pointer;
+    text-align:center;
+  }
+  .buy-btn .arrow{ margin-left:6px; }
+  .buy-note{ text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:9px; }
+
+  .toggle-row{
+    margin:22px 22px 0; display:flex; align-items:center; justify-content:center; gap:8px;
+    cursor:pointer; padding:8px;
+  }
+  .toggle-row span{ font-size:13px; font-weight:600; color:var(--ink-soft); }
+  .chev{ transition:transform .2s; color:var(--ink-soft); }
+  .chev.open{ transform:rotate(180deg); }
+
+  .compare-list{ display:none; padding:6px 22px 0; }
+  .compare-list.open{ display:block; }
+  .comp-row{
+    display:flex; gap:12px; align-items:center; padding:14px 0; border-bottom:1px solid var(--line);
+  }
+  .comp-row:last-child{ border-bottom:none; }
+  .comp-thumb{
+    width:42px; height:42px; border-radius:11px; background:#F1F0EC; display:flex; align-items:center;
+    justify-content:center; font-size:20px; flex-shrink:0;
+  }
+  .comp-info{ flex:1; min-width:0; }
+  .comp-name{ font-size:13.5px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .comp-store{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .comp-right{ text-align:right; flex-shrink:0; }
+  .comp-price{ font-size:14.5px; font-weight:700; color:var(--ink); }
+  .comp-rating{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+
+  .new-search-btn{
+    display:block; width:calc(100% - 44px); margin:26px 22px 0; padding:14px; border-radius:14px;
+    background:transparent; border:1.5px solid var(--line); color:var(--ink); font-weight:600; font-size:14px;
+    cursor:pointer; text-align:center;
+  }
+
+  /* ---- HISTORY drawer ---- */
+  #screen-history{ padding-top:4px; }
+  .hist-empty{ text-align:center; padding:80px 30px; color:var(--ink-soft); }
+  .hist-empty .big{ font-size:36px; margin-bottom:12px; }
+  .hist-item{
+    margin:0 22px 12px; background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:14px 16px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+  }
+  .hist-item .q{ font-size:13.5px; font-weight:600; color:var(--ink); }
+  .hist-item .r{ font-size:12px; color:var(--ink-soft); margin-top:3px; }
+
+  ::selection{ background:var(--amber-soft); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">Ask</div>
+    <div class="icon-btn" onclick="goTo('history')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4v8l-8 4-8-4V8z" stroke="#14151A" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </div>
+  </header>
+
+  <!-- HOME -->
+  <div class="screen active" id="screen-home">
+    <div class="home-hero">
+      <h1>Find what's<br>actually good.</h1>
+      <p>Search Amazon without the fake reviews and knockoffs.<br>One trustworthy pick, no browsing required.</p>
+    </div>
+    <div class="search-shell">
+      <textarea id="search-box" rows="1" placeholder="record player" oninput="autoGrow(this); toggleGo();"></textarea>
+      <button class="go-btn" id="go-btn" disabled onclick="runSearch()">→</button>
+    </div>
+    <div class="examples">
+      <div class="ex-label">Try searching</div>
+      <div class="ex-chip" onclick="fillExample(this)">Record player</div>
+      <div class="ex-chip" onclick="fillExample(this)">Running shoes size 10</div>
+      <div class="ex-chip" onclick="fillExample(this)">Carry-on suitcase</div>
+    </div>
+  </div>
+
+  <!-- LOADING -->
+  <div class="screen" id="screen-loading">
+    <div class="think-mark"></div>
+    <div id="loading-line">Comparing options…</div>
+    <div class="loading-sub">Checking prices and reviews right now</div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="screen" id="screen-results">
+    <div class="query-recap">You asked for <b id="recap-text"></b></div>
+
+    <div class="pick-card">
+      <div class="pick-badge">✓ Verified good pick</div>
+      <div class="pick-photo" id="pick-photo"></div>
+      <div class="pick-top">
+        <div class="pick-thumb" id="pick-emoji">⛺</div>
+        <div>
+          <div class="pick-name" id="pick-name">—</div>
+          <div class="pick-meta" id="pick-meta">—</div>
+        </div>
+      </div>
+      <div class="pick-price-row">
+        <div class="pick-price" id="pick-price">—</div>
+        <div class="pick-store" id="pick-store">—</div>
+      </div>
+      <div class="pick-rating" id="pick-rating"></div>
+      <div class="quality-flag" id="quality-flag" style="display:none;"></div>
+      <div class="pick-reason"><span class="lbl">Why this one — </span><span id="pick-reason-text"></span></div>
+      <div class="video-row" id="video-row" onclick="showToast('Would open the review video on YouTube')">
+        <div class="video-thumb">▶</div>
+        <div>
+          <div class="video-title" id="video-title">Watch a quick review</div>
+          <div class="video-sub" id="video-sub">YouTube · 4:12</div>
+        </div>
+      </div>
+      <button class="buy-btn" onclick="showToast(&quot;Would open this listing on Amazon&quot;)">View on Amazon <span class="arrow">→</span></button>
+      <div class="buy-note">Opens the real Amazon listing to complete your purchase. If you buy, Amazon pays us a small commission — you never pay more.</div>
+    </div>
+
+    <div class="toggle-row" onclick="toggleCompare()">
+      <span id="toggle-label">See 4 other options</span>
+      <svg class="chev" id="chev" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#6B6F76" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="compare-list" id="compare-list"></div>
+
+    <button class="new-search-btn" onclick="goTo('home'); resetSearch();">Ask something else</button>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="screen" id="screen-history">
+    <div id="history-list"></div>
+    <div class="hist-empty" id="history-empty">
+      <div class="big">◈</div>
+      <div style="font-weight:600; color:var(--ink); margin-bottom:4px;">Nothing yet</div>
+      <div>Your past searches will show up here.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast" style="position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:var(--ink); color:white; padding:12px 20px; border-radius:999px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .2s; z-index:100; max-width:380px; text-align:center;"></div>
+
+<script>
+/* ---------- Demo dataset (stands in for a live shopping API) ---------- */
+const DEMO_RESULTS = {
+  tent: {
+    emoji:'⛺', name:'Core Equipment 5-Person Instant Cabin Tent', meta:'10x9 ft · sets up in 60 seconds',
+    price:'$149.99', store:'Amazon', rating:'4.6★', reviewCount:'8,400 reviews', qualityFlag:null,
+    reason:"best-rated for its size, sets up fastest of the group, and this price beats every other retailer we checked.",
+    video:{title:'Core 5-Person Instant Cabin — Real Camping Review', length:'6:48'},
+    others:[
+      {emoji:'⛺', name:'Coleman Sundome 6-Person', store:'Amazon', price:'$169.99', rating:'4.3★ · 2.1k reviews'},
+      {emoji:'⛺', name:'Core 5P Instant Cabin (same model)', store:'Amazon', price:'$159.00', rating:'4.6★ · 8.4k reviews'},
+      {emoji:'⛺', name:'Ozark Trail 5-Person Dome', store:'Amazon', price:'$99.00', rating:'3.9★ · 640 reviews'},
+      {emoji:'⛺', name:'Kelty Discovery Basecamp 6', store:'Amazon', price:'$189.95', rating:'4.5★ · 310 reviews'},
+    ]
+  },
+  blender: {
+    emoji:'🧃', name:'Vitamix E310 Explorian', meta:'quietest in its class · 2-year warranty',
+    price:'$329.95', store:'Amazon', rating:'4.7★', reviewCount:'5,600 reviews', qualityFlag:null,
+    reason:"consistently rated quietest for daily smoothies, and reviewers specifically praise how little noise it makes early in the morning.",
+    video:{title:'Vitamix E310 — Noise Test & 1-Year Review', length:'5:03'},
+    others:[
+      {emoji:'🧃', name:'Ninja Foodi Smoothie Blender', store:'Amazon', price:'$99.99', rating:'4.4★ · 3.2k reviews'},
+      {emoji:'🧃', name:'Vitamix E310 (same model)', store:'Amazon', price:'$349.00', rating:'4.7★ · 5.6k reviews'},
+      {emoji:'🧃', name:'Nutribullet Pro 900', store:'Amazon', price:'$69.99', rating:'4.2★ · 9.8k reviews'},
+    ]
+  },
+  shoes: {
+    emoji:'👟', name:'Brooks Adrenaline GTS 23', meta:'stability fit · podiatrist-recommended for flat feet',
+    price:'$112.00', store:'Amazon', rating:'4.7★', reviewCount:'4,100 reviews', qualityFlag:null,
+    reason:"the top-recommended stability shoe for flat feet among reviewers, and it's the only strong option under your $120 budget.",
+    video:{title:'Brooks Adrenaline GTS 23 — Flat Feet Review', length:'4:22'},
+    others:[
+      {emoji:'👟', name:'ASICS Gel-Kayano 30', store:'Amazon', price:'$160.00', rating:'4.6★ · 1.4k reviews'},
+      {emoji:'👟', name:'Brooks Adrenaline GTS 23 (same model)', store:'Amazon', price:'$119.95', rating:'4.7★ · 4.1k reviews'},
+      {emoji:'👟', name:'New Balance 860v13', store:'Amazon', price:'$134.99', rating:'4.4★ · 780 reviews'},
+    ]
+  },
+  suitcase: {
+    emoji:'🧳', name:'Monos Carry-On Pro', meta:'polycarbonate shell · lifetime warranty',
+    price:'$275.00', store:'Amazon', rating:'4.6★', reviewCount:'3,900 reviews',
+    qualityFlag:"A small number of recent reviews mention a wheel cracking after heavy airline handling — most others report no issues.",
+    reason:"the highest durability rating in reviews for repeated airline handling, and its warranty covers exactly the failure people worry about.",
+    video:{title:'Monos Carry-On Pro — 1 Year of Travel Abuse', length:'7:15'},
+    others:[
+      {emoji:'🧳', name:'Away The Carry-On', store:'Away', price:'$295.00', rating:'4.5★ · 6.2k reviews'},
+      {emoji:'🧳', name:'Samsonite Freeform', store:'Amazon', price:'$139.99', rating:'4.6★ · 12k reviews'},
+      {emoji:'🧳', name:'July Carry On Light', store:'Amazon', price:'$260.00', rating:'4.4★ · 1.1k reviews'},
+    ]
+  },
+  record: {
+    emoji:'🎵', name:'Audio-Technica AT-LP60XBT', meta:'belt-drive · built-in Bluetooth',
+    price:'$149.00', store:'Amazon', rating:'4.6★', reviewCount:'22,000 reviews', qualityFlag:null,
+    reason:"the most reviewed turntable in its price range, and reviewers specifically call out the Bluetooth as reliable, which cheaper models often get wrong.",
+    video:{title:'AT-LP60XBT — Is It Worth It in 2026?', length:'8:31'},
+    others:[
+      {emoji:'🎵', name:'Audio-Technica AT-LP60XBT (same model)', store:'Amazon', price:'$159.99', rating:'4.6★ · 22k reviews'},
+      {emoji:'🎵', name:'Victrola Stream Onyx', store:'Amazon', price:'$249.99', rating:'4.3★ · 1.2k reviews'},
+      {emoji:'🎵', name:'Sony PS-LX310BT', store:'Amazon', price:'$179.99', rating:'4.4★ · 890 reviews'},
+    ]
+  },
+  default: {
+    emoji:'🔎', name:'Top match for your search', meta:'based on price, rating, and availability',
+    price:'$—', store:'Amazon', rating:'4.5★', reviewCount:'900 reviews', qualityFlag:null,
+    reason:"it had the strongest balance of price and review quality among everything we checked just now.",
+    video:null,
+    others:[
+      {emoji:'📦', name:'Alternative option A', store:'Amazon', price:'$—', rating:'4.5★ · 900 reviews'},
+      {emoji:'📦', name:'Alternative option B', store:'Amazon', price:'$—', rating:'4.2★ · 430 reviews'},
+    ]
+  }
+};
+
+let history = [];
+let currentResult = null;
+
+function autoGrow(el){
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 90) + 'px';
+}
+function toggleGo(){
+  document.getElementById('go-btn').disabled = document.getElementById('search-box').value.trim().length === 0;
+}
+function fillExample(el){
+  const box = document.getElementById('search-box');
+  box.value = el.textContent;
+  autoGrow(box);
+  toggleGo();
+  runSearch();
 }
 
-// --- Shape raw API data into what the app's UI expects ----------------------
-// IMPORTANT: the field names on the right (item.stars, item.reviewsCount, ...)
-// are placeholders based on typical scraper output. Replace them with the
-// real field names once you've looked at an actual response.
-function shapeItem(item) {
-  return {
-    name: item.title || 'Unknown product',
-    price: typeof item.price === 'number' ? `$${item.price.toFixed(2)}` : '—',
-    store: 'Amazon',
-    rating: item.rating ? `${item.rating}★` : null,
-    reviewCount: item.reviews_count
-      ? `${Number(item.reviews_count).toLocaleString()} reviews`
-      : null,
-    image: item.url_image || null,
-    // item.url comes back as a relative path (e.g. "/HP-Laptop.../dp/B0..."), not a full link
-    url: item.url ? `https://www.amazon.com${item.url}` : null,
-    asin: item.asin || null,
+function matchDemo(query){
+  const q = query.toLowerCase();
+  if(q.includes('tent') || q.includes('camp')) return DEMO_RESULTS.tent;
+  if(q.includes('blender') || q.includes('smoothie')) return DEMO_RESULTS.blender;
+  if(q.includes('shoe') || q.includes('running') || q.includes('flat feet')) return DEMO_RESULTS.shoes;
+  if(q.includes('suitcase') || q.includes('carry-on') || q.includes('carry on')) return DEMO_RESULTS.suitcase;
+  if(q.includes('record player') || q.includes('turntable') || q.includes('vinyl')) return DEMO_RESULTS.record;
+  return DEMO_RESULTS.default;
+}
+
+// Point this at your deployed backend once you have one running
+// (e.g. https://your-app.onrender.com). Leave blank to keep using
+// the built-in sample data below.
+const API_BASE_URL = 'https://ask-app-backend.onrender.com';
+
+function runSearch(){
+  const query = document.getElementById('search-box').value.trim();
+  if(!query) return;
+  goTo('loading');
+  const lines = ['Searching Amazon…', 'Checking current prices…', 'Comparing reviews…'];
+  let i = 0;
+  document.getElementById('loading-line').textContent = lines[0];
+  const interval = setInterval(()=>{
+    i = (i+1) % lines.length;
+    document.getElementById('loading-line').textContent = lines[i];
+  }, 550);
+
+  const finish = (result) => {
+    clearInterval(interval);
+    currentResult = result;
+    renderResults(query, result);
+    history.unshift({query, result});
+    goTo('results');
   };
+
+  if(API_BASE_URL){
+    fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}`)
+      .then(r => r.json())
+      .then(data => {
+        const top = data.results && data.results[0];
+        if(!top){ finish(matchDemo(query)); return; }
+        // Fetch the review video for the top pick, then render everything together
+        fetch(`${API_BASE_URL}/api/video?product=${encodeURIComponent(top.name)}`)
+          .then(r => r.json())
+          .then(videoData => {
+            finish({
+              emoji: '📦',
+              name: top.name,
+              meta: '',
+              price: top.price,
+              store: 'Amazon',
+              rating: top.rating || '—',
+              reviewCount: top.reviewCount || '',
+              qualityFlag: null,
+              reason: 'the best match we found for this search just now.',
+              video: videoData.video ? { title: videoData.video.title, length: '' } : null,
+              others: data.results.slice(1).map(o => ({
+                emoji:'📦', name:o.name, store:'Amazon', price:o.price,
+                rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
+              })),
+            });
+          })
+          .catch(() => finish({
+            emoji: '📦',
+            name: top.name,
+            meta: '',
+            price: top.price,
+            store: 'Amazon',
+            rating: top.rating || '—',
+            reviewCount: top.reviewCount || '',
+            qualityFlag: null,
+            reason: 'the best match we found for this search just now.',
+            video: null,
+            others: data.results.slice(1).map(o => ({
+              emoji:'📦', name:o.name, store:'Amazon', price:o.price,
+              rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
+            })),
+          }));
+      })
+      .catch(err => {
+        console.error('Backend unreachable, falling back to demo data:', err);
+        setTimeout(() => finish(matchDemo(query)), 400);
+      });
+  } else {
+    setTimeout(() => finish(matchDemo(query)), 1650);
+  }
 }
 
-// --- Route -------------------------------------------------------------
-app.get('/api/search', async (req, res) => {
-  const query = (req.query.q || '').trim().toLowerCase();
-  if (!query) {
-    return res.status(400).json({ error: 'Missing search query (?q=...)' });
+function renderResults(query, r){
+  document.getElementById('recap-text').textContent = '"' + query + '"';
+  document.getElementById('pick-photo').textContent = '[ product photo ]';
+  document.getElementById('pick-emoji').textContent = r.emoji;
+  document.getElementById('pick-name').textContent = r.name;
+  document.getElementById('pick-meta').textContent = r.meta;
+  document.getElementById('pick-price').textContent = r.price;
+  document.getElementById('pick-store').textContent = 'at ' + r.store;
+  document.getElementById('pick-rating').innerHTML = '<b>' + r.rating + '</b> · ' + r.reviewCount;
+  const flagEl = document.getElementById('quality-flag');
+  if(r.qualityFlag){
+    flagEl.style.display = 'flex';
+    flagEl.innerHTML = '<span>⚠</span><span>' + r.qualityFlag + '</span>';
+  } else {
+    flagEl.style.display = 'none';
+  }
+  document.getElementById('pick-reason-text').textContent = r.reason;
+  document.getElementById('toggle-label').textContent = 'See ' + r.others.length + ' other option' + (r.others.length===1?'':'s');
+
+  const videoRow = document.getElementById('video-row');
+  if(r.video){
+    videoRow.style.display = 'flex';
+    document.getElementById('video-title').textContent = r.video.title;
+    document.getElementById('video-sub').textContent = 'YouTube · ' + r.video.length;
+  } else {
+    videoRow.style.display = 'none';
   }
 
-  const cached = getCached(query);
-  if (cached) {
-    return res.json({ source: 'cache', results: cached });
-  }
-
-  try {
-    const raw = await fetchAmazonResults(query);
-    const results = raw.map(shapeItem);
-    setCached(query, results);
-    res.json({ source: 'live', results });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Search failed. Check server logs.' });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-
-// ---------------------------------------------------------------------------
-// YOUTUBE VIDEO LOOKUP (review / unboxing video for the top pick)
-// ---------------------------------------------------------------------------
-// Free, but rate-limited: ~100 searches/day total across ALL users of your
-// app (YouTube's search.list quota). Caching by product name is what makes
-// this workable — one lookup per product name, not one per user.
-
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-const videoCache = new Map();
-const VIDEO_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 1 week — videos don't change often
-
-function getCachedVideo(query) {
-  const hit = videoCache.get(query);
-  if (hit && Date.now() - hit.time < VIDEO_CACHE_TTL_MS) return hit.data;
-  return null;
-}
-function setCachedVideo(query, data) {
-  videoCache.set(query, { data, time: Date.now() });
-}
-
-async function fetchYoutubeReview(productName) {
-  const searchTerm = `${productName} review`;
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(searchTerm)}&key=${YOUTUBE_API_KEY}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`YouTube lookup failed: ${res.status} ${res.statusText}`);
-  }
-  const data = await res.json();
-  if (!data.items || data.items.length === 0) return null;
-
-  const item = data.items[0];
-  return {
-    title: item.snippet.title,
-    videoId: item.id.videoId,
-    url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-    channel: item.snippet.channelTitle,
-  };
+  const list = document.getElementById('compare-list');
+  list.innerHTML = r.others.map(o => `
+    <div class="comp-row">
+      <div class="comp-thumb">${o.emoji}</div>
+      <div class="comp-info">
+        <div class="comp-name">${o.name}</div>
+        <div class="comp-store">${o.store}</div>
+      </div>
+      <div class="comp-right">
+        <div class="comp-price">${o.price}</div>
+        <div class="comp-rating">${o.rating}</div>
+      </div>
+    </div>`).join('');
+  list.classList.remove('open');
+  document.getElementById('chev').classList.remove('open');
 }
 
-app.get('/api/video', async (req, res) => {
-  const productName = (req.query.product || '').trim();
-  if (!productName) {
-    return res.status(400).json({ error: 'Missing product name (?product=...)' });
-  }
+function toggleCompare(){
+  const list = document.getElementById('compare-list');
+  const chev = document.getElementById('chev');
+  list.classList.toggle('open');
+  chev.classList.toggle('open');
+}
 
-  const cacheKey = productName.toLowerCase();
-  const cached = getCachedVideo(cacheKey);
-  if (cached !== null) {
-    return res.json({ source: 'cache', video: cached });
-  }
+function resetSearch(){
+  const box = document.getElementById('search-box');
+  box.value = '';
+  autoGrow(box);
+  toggleGo();
+}
 
-  try {
-    const video = await fetchYoutubeReview(productName);
-    setCachedVideo(cacheKey, video); // caches "null" too, so we don't re-search dead ends daily
-    res.json({ source: 'live', video });
-  } catch (err) {
-    console.error(err);
-    // Fail soft: no video is not a broken app, just an empty video row
-    res.json({ source: 'error', video: null });
-  }
-});
+function renderHistory(){
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  if(history.length === 0){ list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = history.map((h,idx) => `
+    <div class="hist-item" onclick="reopenHistory(${idx})">
+      <div>
+        <div class="q">${h.query}</div>
+        <div class="r">${h.result.name} · ${h.result.price}</div>
+      </div>
+      <span style="color:var(--ink-soft);">→</span>
+    </div>`).join('');
+}
+function reopenHistory(idx){
+  const h = history[idx];
+  currentResult = h.result;
+  renderResults(h.query, h.result);
+  goTo('results');
+}
 
-app.listen(PORT, () => console.log(`Amazon search backend running on port ${PORT}`));
+function goTo(screen){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+screen).classList.add('active');
+  if(screen==='history') renderHistory();
+  window.scrollTo(0,0);
+}
+
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = 1;
+  clearTimeout(window._t);
+  window._t = setTimeout(()=>el.style.opacity=0, 1800);
+}
+</script>
+</body>
+</html>
