@@ -142,6 +142,39 @@
     padding:22px; position:relative; box-shadow:0 10px 30px rgba(232,65,45,.08);
     animation:popIn .4s ease;
   }
+  .tier-card{
+    margin:0 22px 16px; background:var(--panel); border:1.5px solid var(--line); border-radius:20px;
+    padding:18px; position:relative; box-shadow:0 6px 18px rgba(20,21,26,.05); animation:popIn .4s ease;
+  }
+  .tier-card.tier-better{ border:1.5px solid var(--ink); box-shadow:0 10px 26px rgba(232,65,45,.1); }
+  .tier-label{
+    display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:800;
+    letter-spacing:.05em; text-transform:uppercase; padding:4px 10px; border-radius:999px; margin-bottom:10px;
+    transform:rotate(-2deg);
+  }
+  .tier-label.good{ background:#E7F1DE; color:#3E7A2E; }
+  .tier-label.better{ background:var(--pop-soft); color:var(--pop-deep); }
+  .tier-label.best{ background:#FFF3D0; color:#8A6A0E; }
+  .tier-top{ display:flex; gap:12px; align-items:flex-start; }
+  .tier-photo{
+    width:66px; height:66px; border-radius:14px; background:#F1F0EC; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; overflow:hidden; font-size:26px;
+  }
+  .tier-info{ flex:1; min-width:0; }
+  .tier-name{
+    font-family:'Newsreader', serif; font-size:15px; font-weight:600; line-height:1.28; color:var(--ink);
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .tier-rating{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
+  .tier-price{ font-family:'Newsreader', serif; font-size:20px; font-weight:600; color:var(--ink); margin-top:8px; }
+  .tier-reason{ font-size:12.5px; color:var(--ink-soft); line-height:1.45; margin-top:8px; }
+  .tier-buy-btn{
+    display:block; width:100%; margin-top:12px; padding:12px; border:none; border-radius:12px;
+    background:var(--ink); color:white; font-family:'Inter'; font-size:13.5px; font-weight:700; cursor:pointer;
+    text-align:center; transition:transform .15s ease;
+  }
+  .tier-card.tier-better .tier-buy-btn{ background:var(--grad); box-shadow:0 4px 12px rgba(232,65,45,.25); }
+  .tier-buy-btn:active{ transform:scale(0.97); }
   .pick-badge{
     display:inline-flex; align-items:center; gap:6px; background:var(--pop-soft); color:var(--pop-deep);
     font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
@@ -233,6 +266,24 @@
     display:flex; align-items:center; gap:6px; padding:14px 22px 6px; cursor:pointer;
     font-size:14px; font-weight:600; color:var(--ink);
   }
+  .about-link{
+    text-align:center; margin-top:28px; font-size:12.5px; color:var(--ink-soft);
+    text-decoration:underline; cursor:pointer;
+  }
+  .about-content{ padding:8px 24px 40px; }
+  .about-content h2{ font-size:20px; margin-bottom:14px; }
+  .about-content h3{ font-size:14px; font-family:'Inter'; color:var(--ink); margin:22px 0 6px; }
+  .about-content p{ font-size:13.5px; color:var(--ink-soft); line-height:1.55; margin:0 0 4px; }
+  .feedback-box{
+    width:100%; min-height:90px; margin-top:10px; padding:13px 14px; border:1.5px solid var(--line);
+    border-radius:14px; font-family:'Inter'; font-size:14px; color:var(--ink); resize:vertical;
+    background:var(--panel);
+  }
+  .feedback-btn{
+    display:block; width:100%; margin-top:12px; padding:14px; border:none; border-radius:14px;
+    background:var(--grad); color:white; font-family:'Inter'; font-size:14.5px; font-weight:700; cursor:pointer;
+    text-align:center; box-shadow:0 4px 14px rgba(232,65,45,.2);
+  }
   .hist-empty{ text-align:center; padding:80px 30px; color:var(--ink-soft); }
   .hist-empty .big{ font-size:36px; margin-bottom:12px; }
   .hist-item{
@@ -276,6 +327,7 @@
       <div class="ex-chip" onclick="fillExample(this)">Running shoes size 10</div>
       <div class="ex-chip" onclick="fillExample(this)">Carry-on suitcase</div>
     </div>
+    <div class="about-link" onclick="goTo('about')">About & disclosures</div>
   </div>
 
   <!-- LOADING -->
@@ -289,36 +341,10 @@
   <div class="screen" id="screen-results">
     <div class="query-recap">You asked for <b id="recap-text"></b></div>
 
-    <div class="pick-card">
-      <div class="pick-badge">✓ Verified good pick</div>
-      <div class="pick-photo" id="pick-photo"></div>
-      <div class="pick-top">
-        <div class="pick-thumb" id="pick-emoji">⛺</div>
-        <div>
-          <div class="pick-name" id="pick-name">—</div>
-          <div class="pick-meta" id="pick-meta">—</div>
-        </div>
-      </div>
-      <div class="pick-price-row">
-        <div class="pick-price" id="pick-price">—</div>
-        <div class="pick-store" id="pick-store">—</div>
-      </div>
-      <div class="pick-rating" id="pick-rating"></div>
-      <div class="quality-flag" id="quality-flag" style="display:none;"></div>
-      <div class="pick-reason"><span class="lbl">Why this one — </span><span id="pick-reason-text"></span></div>
-      <div class="video-row" id="video-row" onclick="openLink(currentResult && currentResult.video && currentResult.video.url)">
-        <div class="video-thumb">▶</div>
-        <div>
-          <div class="video-title" id="video-title">Watch a quick review</div>
-          <div class="video-sub" id="video-sub">YouTube · 4:12</div>
-        </div>
-      </div>
-      <button class="buy-btn" onclick="openLink(currentResult && currentResult.url)">View on Amazon <span class="arrow">→</span></button>
-      <div class="buy-note">Opens the real Amazon listing to complete your purchase. If you buy, Amazon pays us a small commission — you never pay more.</div>
-    </div>
+    <div id="tier-cards"></div>
 
     <div class="toggle-row" onclick="toggleCompare()">
-      <span id="toggle-label">See 4 other options</span>
+      <span id="toggle-label">See other options</span>
       <svg class="chev" id="chev" width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#6B6F76" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <div class="compare-list" id="compare-list"></div>
@@ -337,6 +363,33 @@
       <div class="big">◈</div>
       <div style="font-weight:600; color:var(--ink); margin-bottom:4px;">Nothing yet</div>
       <div>Your past searches will show up here.</div>
+    </div>
+  </div>
+
+  <!-- ABOUT -->
+  <div class="screen" id="screen-about">
+    <div class="hist-back" onclick="goTo('home')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#14151A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Back</span>
+    </div>
+    <div class="about-content">
+      <h2>About Ask</h2>
+      <p>Ask searches Amazon for you and shows a clear top pick, with real prices, ratings, and reviews pulled live at the moment you search.</p>
+
+      <h3>How it's funded</h3>
+      <p>When you tap "View on Amazon" and buy something, Amazon pays us a small commission through their Associates affiliate program. This never changes the price you pay — it's the same price either way.</p>
+
+      <h3>A few honest notes</h3>
+      <p>Prices, ratings, and stock can change quickly on Amazon. What you see here reflects the moment you searched, and may occasionally be slightly out of date or, rarely, wrong.</p>
+      <p>Products are sold and shipped by Amazon or its third-party sellers, not by us. Any purchase, return, or shipping issue is between you and Amazon, under Amazon's own terms.</p>
+
+      <h3>Your information</h3>
+      <p>This app doesn't require an account, and doesn't collect or store any personal information about you. Your search history is kept only on your own device.</p>
+
+      <h3>Feedback</h3>
+      <p>Found a bug, or have an idea? Let us know.</p>
+      <textarea id="feedback-text" class="feedback-box" placeholder="Type your comment or feedback here..."></textarea>
+      <button class="feedback-btn" onclick="sendFeedback()">Send Feedback</button>
     </div>
   </div>
 
@@ -436,18 +489,113 @@ function fillExample(el){
 
 function matchDemo(query){
   const q = query.toLowerCase();
-  if(q.includes('tent') || q.includes('camp')) return DEMO_RESULTS.tent;
-  if(q.includes('blender') || q.includes('smoothie')) return DEMO_RESULTS.blender;
-  if(q.includes('shoe') || q.includes('running') || q.includes('flat feet')) return DEMO_RESULTS.shoes;
-  if(q.includes('suitcase') || q.includes('carry-on') || q.includes('carry on')) return DEMO_RESULTS.suitcase;
-  if(q.includes('record player') || q.includes('turntable') || q.includes('vinyl')) return DEMO_RESULTS.record;
-  return DEMO_RESULTS.default;
+  let r;
+  if(q.includes('tent') || q.includes('camp')) r = DEMO_RESULTS.tent;
+  else if(q.includes('blender') || q.includes('smoothie')) r = DEMO_RESULTS.blender;
+  else if(q.includes('shoe') || q.includes('running') || q.includes('flat feet')) r = DEMO_RESULTS.shoes;
+  else if(q.includes('suitcase') || q.includes('carry-on') || q.includes('carry on')) r = DEMO_RESULTS.suitcase;
+  else if(q.includes('record player') || q.includes('turntable') || q.includes('vinyl')) r = DEMO_RESULTS.record;
+  else r = DEMO_RESULTS.default;
+
+  // Combine the demo "top pick" and its alternatives into one raw list,
+  // then run it through the same real scoring logic used for live results.
+  const rawList = [
+    { name:r.name, price:r.price, rating:r.rating, reviewCount:r.reviewCount, image:null, url:null, asin:r.name },
+    ...r.others.map(o => ({ name:o.name, price:o.price, rating:o.rating, reviewCount:null, image:o.image||null, url:o.url||null, asin:o.name })),
+  ];
+  const { picks, others } = computeTiers(rawList);
+  return { picks, others, video: r.video ? { title: r.video.title, url: null } : null, videoForTier: 'better' };
 }
 
 // Point this at your deployed backend once you have one running
 // (e.g. https://your-app.onrender.com). Leave blank to keep using
 // the built-in sample data below.
 const API_BASE_URL = 'https://ask-app-backend.onrender.com';
+
+// --- Parsing helpers: pull real numbers out of display strings ---
+function parsePriceNum(str){
+  if(!str) return NaN;
+  const n = parseFloat(String(str).replace(/[^0-9.]/g,''));
+  return isNaN(n) ? NaN : n;
+}
+function parseCountNum(str){
+  if(!str) return 0;
+  const s = String(str).toLowerCase().replace(/reviews?/,'').trim();
+  const m = s.match(/([\d,.]+)\s*(k|m)?/);
+  if(!m) return 0;
+  let num = parseFloat(m[1].replace(/,/g,'')) || 0;
+  if(m[2]==='k') num *= 1000;
+  if(m[2]==='m') num *= 1000000;
+  return num;
+}
+// Handles both separate fields (real search results) and the combined
+// "4.3★ · 2.1k reviews" format used in the collapsed comparison list.
+function extractRatingAndCount(item){
+  if(item.reviewCount){
+    return {
+      ratingNum: parseFloat(String(item.rating||'').replace('★','')) || 0,
+      countNum: parseCountNum(item.reviewCount),
+    };
+  }
+  const ratingStr = item.rating || '';
+  const starMatch = ratingStr.match(/([\d.]+)★/);
+  const afterDot = ratingStr.split('·')[1] || '';
+  return { ratingNum: starMatch ? parseFloat(starMatch[1]) : 0, countNum: parseCountNum(afterDot) };
+}
+
+// Scores real results into Good (cheapest solid option), Better (best
+// overall value), and Best (highest rated) — using only data we already
+// have, no extra API calls.
+function computeTiers(rawItems){
+  const candidates = rawItems.map(it => {
+    const {ratingNum, countNum} = extractRatingAndCount(it);
+    return { ...it, _rating: ratingNum, _count: countNum, _price: parsePriceNum(it.price) };
+  }).filter(it => it._rating > 0 && !isNaN(it._price) && it._price > 0);
+
+  if(candidates.length === 0) return { picks: [], others: rawItems };
+
+  // Prefer items with enough reviews to actually trust the rating.
+  const trustworthy = candidates.filter(c => c._count >= 15);
+  const pool = trustworthy.length > 0 ? trustworthy : candidates;
+  const key = c => c.asin || c.name;
+
+  // Pick Best first (highest rating), then Good and Better excluding
+  // whatever's already chosen — so two tiers don't silently collide on
+  // the same product when one item happens to be both cheapest and best-rated.
+  const best = [...pool].sort((a,b) => b._rating - a._rating || b._count - a._count)[0];
+
+  const withoutBest = pool.filter(c => key(c) !== key(best));
+  const goodSource = withoutBest.length > 0 ? withoutBest : pool;
+  const decentRated = goodSource.filter(c => c._rating >= 4.0);
+  const goodPool = decentRated.length > 0 ? decentRated : goodSource;
+  const good = [...goodPool].sort((a,b) => a._price - b._price)[0];
+
+  const valueScore = c => (c._rating / Math.sqrt(c._price)) * Math.log10(c._count + 10);
+  const withoutBestOrGood = pool.filter(c => key(c) !== key(best) && key(c) !== key(good));
+  const betterSource = withoutBestOrGood.length > 0 ? withoutBestOrGood : (withoutBest.length > 0 ? withoutBest : pool);
+  const betterDecent = betterSource.filter(c => c._rating >= 4.0);
+  const betterPool = betterDecent.length > 0 ? betterDecent : betterSource;
+  const better = [...betterPool].sort((a,b) => valueScore(b) - valueScore(a))[0];
+
+  const rawPicks = [
+    { ...good, tier:'good', label:'GOOD', reason:"the lowest price among options with a rating we'd actually trust." },
+    { ...better, tier:'better', label:'BETTER', reason:"the strongest overall balance of price, rating, and review volume." },
+    { ...best, tier:'best', label:'BEST', reason:"the highest-rated option we found, if quality matters more than price." },
+  ];
+
+  const seen = new Set();
+  const picks = rawPicks.filter(p => {
+    const k = key(p);
+    if(seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  const pickedKeys = new Set(picks.map(p => key(p)));
+  const others = rawItems.filter(it => !pickedKeys.has(it.asin || it.name));
+
+  return { picks, others };
+}
 
 function runSearch(){
   const query = document.getElementById('search-box').value.trim();
@@ -473,49 +621,22 @@ function runSearch(){
     fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}`)
       .then(r => r.json())
       .then(data => {
-        const top = data.results && data.results[0];
-        if(!top){ finish(matchDemo(query)); return; }
-        // Fetch the review video for the top pick, then render everything together
-        fetch(`${API_BASE_URL}/api/video?product=${encodeURIComponent(top.name)}`)
+        const raw = data.results || [];
+        if(raw.length === 0){ finish(matchDemo(query)); return; }
+
+        const { picks, others } = computeTiers(raw);
+        if(picks.length === 0){ finish(matchDemo(query)); return; }
+
+        // Fetch one review video for the "Better" (best value) pick only —
+        // keeps YouTube usage the same as before, even with 3 cards.
+        const betterPick = picks.find(p => p.tier === 'better') || picks[0];
+        fetch(`${API_BASE_URL}/api/video?product=${encodeURIComponent(betterPick.name)}`)
           .then(r => r.json())
           .then(videoData => {
-            finish({
-              emoji: '📦',
-              name: top.name,
-              meta: '',
-              price: top.price,
-              store: 'Amazon',
-              url: top.url,
-              image: top.image,
-              rating: top.rating || '—',
-              reviewCount: top.reviewCount || '',
-              qualityFlag: null,
-              reason: 'the best match we found for this search just now.',
-              video: videoData.video ? { title: videoData.video.title, length: '', url: videoData.video.url } : null,
-              others: data.results.slice(1).map(o => ({
-                emoji:'📦', name:o.name, store:'Amazon', price:o.price, url:o.url, image:o.image,
-                rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
-              })),
-            });
+            const video = videoData.video ? { title: videoData.video.title, url: videoData.video.url } : null;
+            finish({ picks, others, video, videoForTier: betterPick.tier });
           })
-          .catch(() => finish({
-            emoji: '📦',
-            name: top.name,
-            meta: '',
-            price: top.price,
-            store: 'Amazon',
-            url: top.url,
-            image: top.image,
-            rating: top.rating || '—',
-            reviewCount: top.reviewCount || '',
-            qualityFlag: null,
-            reason: 'the best match we found for this search just now.',
-            video: null,
-            others: data.results.slice(1).map(o => ({
-              emoji:'📦', name:o.name, store:'Amazon', price:o.price, url:o.url, image:o.image,
-              rating:(o.rating||'') + (o.reviewCount ? ' · ' + o.reviewCount : '')
-            })),
-          }));
+          .catch(() => finish({ picks, others, video: null, videoForTier: betterPick.tier }));
       })
       .catch(err => {
         console.error('Backend unreachable, falling back to demo data:', err);
@@ -528,48 +649,51 @@ function runSearch(){
 
 function renderResults(query, r){
   document.getElementById('recap-text').textContent = '"' + query + '"';
-  const photoEl = document.getElementById('pick-photo');
-  if(r.image){
-    photoEl.innerHTML = `<img src="${r.image}" alt="${r.name}" style="width:100%;height:100%;object-fit:contain;border-radius:16px;">`;
-  } else {
-    photoEl.innerHTML = '[ product photo ]';
-  }
-  document.getElementById('pick-emoji').textContent = r.emoji;
-  document.getElementById('pick-name').textContent = r.name;
-  document.getElementById('pick-meta').textContent = r.meta;
-  document.getElementById('pick-price').textContent = r.price;
-  document.getElementById('pick-store').textContent = 'at ' + r.store;
-  document.getElementById('pick-rating').innerHTML = '<b>' + r.rating + '</b> · ' + r.reviewCount;
-  const flagEl = document.getElementById('quality-flag');
-  if(r.qualityFlag){
-    flagEl.style.display = 'flex';
-    flagEl.innerHTML = '<span>⚠</span><span>' + r.qualityFlag + '</span>';
-  } else {
-    flagEl.style.display = 'none';
-  }
-  document.getElementById('pick-reason-text').textContent = r.reason;
-  document.getElementById('toggle-label').textContent = 'See ' + r.others.length + ' other option' + (r.others.length===1?'':'s');
 
-  const videoRow = document.getElementById('video-row');
-  if(r.video){
-    videoRow.style.display = 'flex';
-    document.getElementById('video-title').textContent = r.video.title;
-    document.getElementById('video-sub').textContent = 'YouTube · ' + r.video.length;
-  } else {
-    videoRow.style.display = 'none';
-  }
+  const tierOrder = { good:0, better:1, best:2 };
+  const sortedPicks = [...r.picks].sort((a,b) => tierOrder[a.tier] - tierOrder[b.tier]);
+
+  const cardsEl = document.getElementById('tier-cards');
+  cardsEl.innerHTML = sortedPicks.map(p => {
+    const photo = p.image
+      ? `<img src="${p.image}" alt="${p.name}" style="width:100%;height:100%;object-fit:contain;">`
+      : '📦';
+    const ratingLine = p._rating ? `${p._rating}★ · ${Math.round(p._count).toLocaleString()} reviews` : '';
+    const showVideo = r.video && r.videoForTier === p.tier;
+    const safeUrl = (p.url||'').replace(/'/g, "\\'");
+    return `
+    <div class="tier-card tier-${p.tier}">
+      <div class="tier-label ${p.tier}">${p.tier === 'good' ? '💰 GOOD' : p.tier === 'better' ? '✓ BETTER' : '⭐ BEST'}</div>
+      <div class="tier-top">
+        <div class="tier-photo">${photo}</div>
+        <div class="tier-info">
+          <div class="tier-name">${p.name}</div>
+          <div class="tier-rating">${ratingLine}</div>
+          <div class="tier-price">${p.price}</div>
+        </div>
+      </div>
+      <div class="tier-reason">${p.reason}</div>
+      ${showVideo ? `<div class="video-row" onclick="openLink('${(r.video.url||'').replace(/'/g, "\\'")}')" style="margin-top:10px;">
+        <div class="video-thumb">▶</div>
+        <div><div class="video-title">${r.video.title}</div><div class="video-sub">YouTube</div></div>
+      </div>` : ''}
+      <button class="tier-buy-btn" onclick="openLink('${safeUrl}')">View on Amazon →</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('toggle-label').textContent = 'See ' + r.others.length + ' other option' + (r.others.length===1?'':'s');
 
   const list = document.getElementById('compare-list');
   list.innerHTML = r.others.map(o => `
     <div class="comp-row" onclick="openLink('${(o.url||'').replace(/'/g, "\\'")}')">
-      <div class="comp-thumb">${o.image ? `<img src="${o.image}" alt="${o.name}" style="width:100%;height:100%;object-fit:contain;border-radius:11px;">` : o.emoji}</div>
+      <div class="comp-thumb">${o.image ? `<img src="${o.image}" alt="${o.name}" style="width:100%;height:100%;object-fit:contain;border-radius:11px;">` : '📦'}</div>
       <div class="comp-info">
         <div class="comp-name">${o.name}</div>
-        <div class="comp-store">${o.store}</div>
+        <div class="comp-store">Amazon</div>
       </div>
       <div class="comp-right">
         <div class="comp-price">${o.price}</div>
-        <div class="comp-rating">${o.rating}</div>
+        <div class="comp-rating">${o.rating || ''}</div>
       </div>
     </div>`).join('');
   list.classList.remove('open');
@@ -595,14 +719,17 @@ function renderHistory(){
   const empty = document.getElementById('history-empty');
   if(history.length === 0){ list.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display = 'none';
-  list.innerHTML = history.map((h,idx) => `
+  list.innerHTML = history.map((h,idx) => {
+    const rep = h.result.picks.find(p => p.tier === 'better') || h.result.picks[0] || {};
+    return `
     <div class="hist-item" onclick="reopenHistory(${idx})">
       <div>
         <div class="q">${h.query}</div>
-        <div class="r">${h.result.name} · ${h.result.price}</div>
+        <div class="r">${rep.name || ''} · ${rep.price || ''}</div>
       </div>
       <span style="color:var(--ink-soft);">→</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function reopenHistory(idx){
   const h = history[idx];
@@ -624,6 +751,17 @@ function addAffiliateTag(url){
   if(!url.includes('amazon.com')) return url; // only tag real Amazon product links
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}tag=${AMAZON_ASSOCIATE_TAG}`;
+}
+
+function sendFeedback(){
+  const text = document.getElementById('feedback-text').value.trim();
+  if(!text){
+    showToast('Type something first');
+    return;
+  }
+  const subject = encodeURIComponent('Ask app feedback');
+  const body = encodeURIComponent(text);
+  window.location.href = `mailto:jason.carr84@gmail.com?subject=${subject}&body=${body}`;
 }
 
 function openLink(url){
