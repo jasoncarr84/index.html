@@ -306,8 +306,13 @@
       </div>
       <div class="brand">Ask</div>
     </div>
-    <div class="icon-btn" onclick="goTo('history')">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4v8l-8 4-8-4V8z" stroke="#14151A" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <div style="display:flex; gap:8px;">
+      <div class="icon-btn" onclick="forceRefresh()" title="Refresh app">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 12a9 9 0 11-3-6.7" stroke="#14151A" stroke-width="1.8" stroke-linecap="round"/><path d="M21 4v5h-5" stroke="#14151A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="icon-btn" onclick="goTo('history')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 8l8-4 8 4v8l-8 4-8-4V8z" stroke="#14151A" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </div>
     </div>
   </header>
 
@@ -504,7 +509,11 @@ function matchDemo(query){
     ...r.others.map(o => ({ name:o.name, price:o.price, rating:o.rating, reviewCount:null, image:o.image||null, url:o.url||null, asin:o.name })),
   ];
   const { picks, others } = computeTiers(rawList);
-  return { picks, others, video: r.video ? { title: r.video.title, url: null } : null, videoForTier: 'better' };
+  const picksWithVideo = picks.map(p => ({
+    ...p,
+    video: (p.asin === r.name && r.video) ? { title: r.video.title, url: null } : null,
+  }));
+  return { picks: picksWithVideo, others };
 }
 
 // Point this at your deployed backend once you have one running
@@ -627,16 +636,21 @@ function runSearch(){
         const { picks, others } = computeTiers(raw);
         if(picks.length === 0){ finish(matchDemo(query)); return; }
 
-        // Fetch one review video for the "Better" (best value) pick only —
-        // keeps YouTube usage the same as before, even with 3 cards.
-        const betterPick = picks.find(p => p.tier === 'better') || picks[0];
-        fetch(`${API_BASE_URL}/api/video?product=${encodeURIComponent(betterPick.name)}`)
-          .then(r => r.json())
-          .then(videoData => {
-            const video = videoData.video ? { title: videoData.video.title, url: videoData.video.url } : null;
-            finish({ picks, others, video, videoForTier: betterPick.tier });
-          })
-          .catch(() => finish({ picks, others, video: null, videoForTier: betterPick.tier }));
+        // Fetch a review video for each of the 3 picks in parallel.
+        // Uses more of the shared YouTube quota than before (3 lookups
+        // instead of 1), but repeat searches stay free thanks to caching,
+        // and a missing video just means an empty slot, not a broken app.
+        const videoFetches = picks.map(p =>
+          fetch(`${API_BASE_URL}/api/video?product=${encodeURIComponent(p.name)}`)
+            .then(r => r.json())
+            .then(videoData => videoData.video ? { title: videoData.video.title, url: videoData.video.url } : null)
+            .catch(() => null)
+        );
+
+        Promise.all(videoFetches).then(videos => {
+          const picksWithVideo = picks.map((p, i) => ({ ...p, video: videos[i] }));
+          finish({ picks: picksWithVideo, others });
+        });
       })
       .catch(err => {
         console.error('Backend unreachable, falling back to demo data:', err);
@@ -659,7 +673,7 @@ function renderResults(query, r){
       ? `<img src="${p.image}" alt="${p.name}" style="width:100%;height:100%;object-fit:contain;">`
       : '📦';
     const ratingLine = p._rating ? `${p._rating}★ · ${Math.round(p._count).toLocaleString()} reviews` : '';
-    const showVideo = r.video && r.videoForTier === p.tier;
+    const showVideo = !!p.video;
     const safeUrl = (p.url||'').replace(/'/g, "\\'");
     return `
     <div class="tier-card tier-${p.tier}">
@@ -673,9 +687,9 @@ function renderResults(query, r){
         </div>
       </div>
       <div class="tier-reason">${p.reason}</div>
-      ${showVideo ? `<div class="video-row" onclick="openLink('${(r.video.url||'').replace(/'/g, "\\'")}')" style="margin-top:10px;">
+      ${showVideo ? `<div class="video-row" onclick="openLink('${(p.video.url||'').replace(/'/g, "\\'")}')" style="margin-top:10px;">
         <div class="video-thumb">▶</div>
-        <div><div class="video-title">${r.video.title}</div><div class="video-sub">YouTube</div></div>
+        <div><div class="video-title">${p.video.title}</div><div class="video-sub">YouTube</div></div>
       </div>` : ''}
       <button class="tier-buy-btn" onclick="openLink('${safeUrl}')">View on Amazon →</button>
     </div>`;
@@ -762,6 +776,14 @@ function sendFeedback(){
   const subject = encodeURIComponent('Ask app feedback');
   const body = encodeURIComponent(text);
   window.location.href = `mailto:jason.carr84@gmail.com?subject=${subject}&body=${body}`;
+}
+
+function forceRefresh(){
+  // Adding a changing value to the URL forces the browser (and the
+  // installed home-screen icon) to treat this as a brand-new page instead
+  // of reusing a stale cached copy — no need to delete and reinstall.
+  const freshUrl = window.location.pathname + '?refreshed=' + Date.now();
+  window.location.href = freshUrl;
 }
 
 function openLink(url){
